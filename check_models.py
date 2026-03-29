@@ -1,19 +1,25 @@
 """
-Diagnostic: list all available Gemini models for the configured API key.
+Diagnostic: показывает текущую модель бота и доступные модели OpenAI.
 Run: python check_models.py
 """
-import requests
-from config import GEMINI_API_KEY
+from openai import OpenAI
+from config import OPENAI_API_KEY
 
-url = f"https://generativelanguage.googleapis.com/v1/models?key={GEMINI_API_KEY}"
-resp = requests.get(url)
-data = resp.json()
+# Модель которую использует бот (должна совпадать с gemini_client.py)
+BOT_MODEL = "gpt-4o-mini"
 
-if "models" not in data:
-    print("ERROR:", data)
-else:
-    print("Available models that support generateContent:\n")
-    for m in data["models"]:
-        methods = m.get("supportedGenerationMethods", [])
-        if "generateContent" in methods:
-            print(" •", m["name"])
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+print(f"🤖 Текущая модель бота: {BOT_MODEL}\n")
+
+print("📋 Доступные модели GPT на вашем аккаунте:\n")
+try:
+    models = client.models.list()
+    gpt_models = sorted(
+        [m.id for m in models.data if "gpt" in m.id],
+    )
+    for m in gpt_models:
+        marker = " ◄ (используется сейчас)" if m == BOT_MODEL else ""
+        print(f"  • {m}{marker}")
+except Exception as e:
+    print(f"❌ Ошибка: {e}")
