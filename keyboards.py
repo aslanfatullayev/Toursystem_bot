@@ -4,15 +4,31 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
+# ── Translations ───────────────────────────────────────────────────────────────
+
+BTN_TOUR = {"ru": "🌍 Подобрать тур", "uz": "🌍 Tur tanlash", "en": "🌍 Find a tour"}
+BTN_AVAIL = {"ru": "🔥 Доступные туры", "uz": "🔥 Mavjud turlar", "en": "🔥 Available tours"}
+BTN_MY = {"ru": "📄 Мои заявки", "uz": "📄 Mening arizalarim", "en": "📄 My requests"}
+BTN_SETTINGS = {"ru": "⚙️ Настройки", "uz": "⚙️ Sozlamalar", "en": "⚙️ Settings"}
+
+BTN_CREATE = {"ru": "📋 Создать заявку", "uz": "📋 Ariza yaratish", "en": "📋 Create request"}
+BTN_MENU = {"ru": "🔙 В главное меню", "uz": "🔙 Asosiy menyuga", "en": "🔙 Main menu"}
+
+BTN_CONTACT = {"ru": "📱 Отправить контакт", "uz": "📱 Kontakt yuborish", "en": "📱 Share contact"}
+BTN_SKIP = {"ru": "➡️ Пропустить", "uz": "➡️ O'tkazib yuborish", "en": "➡️ Skip"}
+
+def _t(btn_dict: dict, lang: str) -> str:
+    return btn_dict.get(lang, btn_dict["ru"])
+
 
 # ── Reply menus ────────────────────────────────────────────────────────────────
 
-def client_menu() -> ReplyKeyboardMarkup:
+def client_menu(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
-    b.button(text="🌍 Подобрать тур")
-    b.button(text="🔥 Доступные туры")
-    b.button(text="📄 Мои заявки")
-    b.button(text="⚙️ Настройки")
+    b.button(text=_t(BTN_TOUR, lang))
+    b.button(text=_t(BTN_AVAIL, lang))
+    b.button(text=_t(BTN_MY, lang))
+    b.button(text=_t(BTN_SETTINGS, lang))
     b.adjust(2, 2)
     return b.as_markup(resize_keyboard=True)
 
@@ -37,23 +53,23 @@ def admin_menu() -> ReplyKeyboardMarkup:
     return b.as_markup(resize_keyboard=True)
 
 
-def ai_chat_kb() -> ReplyKeyboardMarkup:
+def ai_chat_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
-    b.button(text="📋 Создать заявку")
-    b.button(text="🔙 В главное меню")
+    b.button(text=_t(BTN_CREATE, lang))
+    b.button(text=_t(BTN_MENU, lang))
     b.adjust(1)
     return b.as_markup(resize_keyboard=True)
 
 
-def phone_kb() -> ReplyKeyboardMarkup:
+def phone_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
-    b.button(text="📱 Отправить контакт", request_contact=True)
+    b.button(text=_t(BTN_CONTACT, lang), request_contact=True)
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def skip_kb() -> ReplyKeyboardMarkup:
+def skip_kb(lang: str = "ru") -> ReplyKeyboardMarkup:
     b = ReplyKeyboardBuilder()
-    b.button(text="➡️ Пропустить")
+    b.button(text=_t(BTN_SKIP, lang))
     return b.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
@@ -81,6 +97,15 @@ def language_kb() -> InlineKeyboardMarkup:
     b.button(text="🇺🇿 O'zbekcha", callback_data="lang:uz")
     b.button(text="🇬🇧 English", callback_data="lang:en")
     b.adjust(1)
+    return b.as_markup()
+
+
+def change_lang_kb() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.button(text="🇷🇺 Русский", callback_data="change_lang:ru")
+    b.button(text="🇺🇿 O'zbekcha", callback_data="change_lang:uz")
+    b.button(text="🇬🇧 English", callback_data="change_lang:en")
+    b.adjust(3)
     return b.as_markup()
 
 

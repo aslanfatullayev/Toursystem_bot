@@ -8,12 +8,68 @@ from sqlalchemy import select
 from ai_client import extract_lead_info, get_ai_response, get_chat_summary, reset_ai_history
 from config import ADMIN_IDS
 from database import Lead, Tour, User, async_session, get_user
-from keyboards import ai_chat_kb, client_menu, lead_actions_kb, tour_apply_kb
+from keyboards import (
+    BTN_TOUR, BTN_AVAIL, BTN_MY, BTN_SETTINGS, BTN_CREATE, BTN_MENU,
+    ai_chat_kb, change_lang_kb, client_menu, lead_actions_kb, tour_apply_kb
+)
 from states import ClientStates
 from stickers import get_sticker
 
 router = Router()
 log = logging.getLogger(__name__)
+
+_TEXTS = {
+    "start_chat": {
+        "ru": "✈️ Отлично, начинаем! Расскажите куда хотите, когда и сколько вас будет?\n\nКогда готовы — жмите <b>📋 Создать заявку</b> 🔥",
+        "uz": "✈️ Ajoyib, boshladik! Qayerga, qachon va necha kishi bo'lishingizni aytib bering?\n\nTayyor bo'lsangiz — <b>📋 Ariza yaratish</b> tugmasini bosing 🔥",
+        "en": "✈️ Great, let's start! Tell me where, when, and how many people?\n\nWhen ready - press <b>📋 Create request</b> 🔥"
+    },
+    "main_menu": {
+        "ru": "Главное меню 🏠",
+        "uz": "Asosiy menyu 🏠",
+        "en": "Main menu 🏠"
+    },
+    "lead_created": {
+        "ru": "🎉 <b>Заявка №{lead_id} создана!</b>\n\nМенеджер уже получил её и скоро свяжется с вами! Скоро начнётся ваше путешествие мечты 🌍✨",
+        "uz": "🎉 <b>№{lead_id} ariza yaratildi!</b>\n\nMenejer uni qabul qildi va tez orada siz bilan bog'lanadi! Orzuyingizdagi sayohat tez orada boshlanadi 🌍✨",
+        "en": "🎉 <b>Request №{lead_id} created!</b>\n\nA manager has received it and will contact you soon! Your dream journey begins soon 🌍✨"
+    },
+    "no_tours": {
+        "ru": "😔 Пока нет доступных туров.\nСовсем скоро добавим что-то крутое! 🌍",
+        "uz": "😔 Hozircha mavjud turlar yo'q.\nTez orada ajoyib narsalar qo'shamiz! 🌍",
+        "en": "😔 No available tours right now.\nWe will add something awesome very soon! 🌍"
+    },
+    "tours_list": {
+        "ru": "🔥 <b>Доступные туры ({count}):</b>",
+        "uz": "🔥 <b>Mavjud turlar ({count}):</b>",
+        "en": "🔥 <b>Available tours ({count}):</b>"
+    },
+    "tour_apply_toast": {
+        "ru": "✅ Заявка отправлена!",
+        "uz": "✅ Ariza yuborildi!",
+        "en": "✅ Request sent!"
+    },
+    "tour_lead_created": {
+        "ru": "🎉 <b>Заявка №{lead_id} на тур «{tour_title}» создана!</b>\n\nМенеджер свяжется с вами в ближайшее время 🙌",
+        "uz": "🎉 <b>«{tour_title}» turi uchun №{lead_id} ariza yaratildi!</b>\n\nMenejer tez orada siz bilan bog'lanadi 🙌",
+        "en": "🎉 <b>Request №{lead_id} for tour «{tour_title}» created!</b>\n\nA manager will contact you shortly 🙌"
+    },
+    "no_leads": {
+        "ru": "У вас пока нет заявок 🙈\nНажмите '🌍 Подобрать тур'!",
+        "uz": "Sizda hozircha arizalar yo'q 🙈\nTur tanlash tugmasini bosing!",
+        "en": "You don't have any requests yet 🙈\nPress the find a tour button!"
+    },
+    "my_leads": {
+        "ru": "📄 <b>Ваши заявки:</b>\n\n",
+        "uz": "📄 <b>Sizning arizalaringiz:</b>\n\n",
+        "en": "📄 <b>Your requests:</b>\n\n"
+    },
+    "settings": {
+        "ru": "⚙️ <b>Настройки</b>\n\n👤 Имя: {name}\n🎂 Возраст: {age}\n📱 Телефон: {phone}\n🌐 Язык: {lang}\n\nДля перерегистрации: /start\nДля смены языка нажмите кнопку ниже:",
+        "uz": "⚙️ <b>Sozlamalar</b>\n\n👤 Ism: {name}\n🎂 Yosh: {age}\n📱 Telefon: {phone}\n🌐 Til: {lang}\n\nQaytadan ro'yxatdan o'tish uchun: /start\nTilni o'zgartirish uchun quyidagi tugmani bosing:",
+        "en": "⚙️ <b>Settings</b>\n\n👤 Name: {name}\n🎂 Age: {age}\n📱 Phone: {phone}\n🌐 Language: {lang}\n\nTo re-register: /start\nTo change language, press the button below:"
+    }
+}
 
 
 async def _sticker(message: Message, mood: str) -> None:
@@ -65,7 +121,7 @@ async def _notify_managers(bot: Bot, lead: Lead, user: User) -> None:
 
 # ── 🌍 Подобрать тур ───────────────────────────────────────────────────────────
 
-@router.message(F.text == "🌍 Подобрать тур")
+@router.message(F.text.in_(BTN_TOUR.values()))
 async def start_chat(message: Message, state: FSMContext) -> None:
     user = await get_user(message.from_user.id)
     if not user or user.role != "client":
@@ -73,19 +129,20 @@ async def start_chat(message: Message, state: FSMContext) -> None:
     await state.set_state(ClientStates.ai_chat)
     await _sticker(message, "travel")
     await message.answer(
-        "✈️ Отлично, начинаем! Расскажите куда хотите, когда и сколько вас будет?\n\n"
-        "Когда готовы — жмите <b>📋 Создать заявку</b> 🔥",
-        reply_markup=ai_chat_kb(),
+        _TEXTS["start_chat"][user.language],
+        reply_markup=ai_chat_kb(user.language),
     )
 
 
-@router.message(ClientStates.ai_chat, F.text == "🔙 В главное меню")
+@router.message(ClientStates.ai_chat, F.text.in_(BTN_MENU.values()))
 async def back_to_menu(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("Главное меню 🏠", reply_markup=client_menu())
+    user = await get_user(message.from_user.id)
+    lang = user.language if user else "ru"
+    await message.answer(_TEXTS["main_menu"][lang], reply_markup=client_menu(lang))
 
 
-@router.message(ClientStates.ai_chat, F.text == "📋 Создать заявку")
+@router.message(ClientStates.ai_chat, F.text.in_(BTN_CREATE.values()))
 async def create_lead_btn(message: Message, state: FSMContext, bot: Bot) -> None:
     uid = message.from_user.id
     user = await get_user(uid)
@@ -113,10 +170,8 @@ async def create_lead_btn(message: Message, state: FSMContext, bot: Bot) -> None
 
     await _sticker(message, "success")
     await message.answer(
-        f"🎉 <b>Заявка №{lead.id} создана!</b>\n\n"
-        "Менеджер уже получил её и скоро свяжется с вами! "
-        "Скоро начнётся ваше путешествие мечты 🌍✨",
-        reply_markup=client_menu(),
+        _TEXTS["lead_created"][user.language].format(lead_id=lead.id),
+        reply_markup=client_menu(user.language),
     )
     await _notify_managers(bot, lead, user)
 
@@ -131,7 +186,7 @@ async def ai_chat(message: Message, bot: Bot) -> None:
 
 # ── 🔥 Доступные туры ─────────────────────────────────────────────────────────
 
-@router.message(F.text == "🔥 Доступные туры")
+@router.message(F.text.in_(BTN_AVAIL.values()))
 async def show_tours(message: Message) -> None:
     user = await get_user(message.from_user.id)
     if not user or user.role != "client":
@@ -142,19 +197,17 @@ async def show_tours(message: Message) -> None:
         ).scalars().all()
 
     if not tours:
-        await message.answer(
-            "😔 Пока нет доступных туров.\nСовсем скоро добавим что-то крутое! 🌍"
-        )
+        await message.answer(_TEXTS["no_tours"][user.language])
         return
 
     await _sticker(message, "travel")
-    await message.answer(f"🔥 <b>Доступные туры ({len(tours)}):</b>")
+    await message.answer(_TEXTS["tours_list"][user.language].format(count=len(tours)))
     for tour in tours:
         await message.answer(
             f"🏝 <b>{tour.title}</b>\n"
-            f"📍 Страна: {tour.country}\n"
-            f"💰 Цена: {tour.price}\n"
-            f"📅 Даты: {tour.dates}\n\n"
+            f"📍 {tour.country}\n"
+            f"💰 {tour.price}\n"
+            f"📅 {tour.dates}\n\n"
             f"📄 {tour.description}",
             reply_markup=tour_apply_kb(tour.id),
         )
@@ -165,11 +218,12 @@ async def apply_from_tour(callback: CallbackQuery, bot: Bot) -> None:
     tour_id = int(callback.data.split(":")[1])
     uid = callback.from_user.id
     user = await get_user(uid)
+    lang = user.language if user else "ru"
 
     async with async_session() as s:
         tour = await s.get(Tour, tour_id)
         if not tour:
-            await callback.answer("Тур не найден.", show_alert=True)
+            await callback.answer("Error", show_alert=True)
             return
         lead = Lead(
             user_id=uid,
@@ -184,22 +238,21 @@ async def apply_from_tour(callback: CallbackQuery, bot: Bot) -> None:
         await s.commit()
         await s.refresh(lead)
 
-    await callback.answer("✅ Заявка отправлена!")
+    await callback.answer(_TEXTS["tour_apply_toast"][lang])
     try:
         await callback.message.answer_sticker(get_sticker("success"))
     except Exception:
         pass
     await callback.message.answer(
-        f"🎉 <b>Заявка №{lead.id} на тур «{tour.title}» создана!</b>\n\n"
-        "Менеджер свяжется с вами в ближайшее время 🙌",
-        reply_markup=client_menu(),
+        _TEXTS["tour_lead_created"][lang].format(lead_id=lead.id, tour_title=tour.title),
+        reply_markup=client_menu(lang),
     )
     await _notify_managers(bot, lead, user)
 
 
 # ── 📄 Мои заявки ─────────────────────────────────────────────────────────────
 
-@router.message(F.text == "📄 Мои заявки")
+@router.message(F.text.in_(BTN_MY.values()))
 async def my_leads(message: Message) -> None:
     user = await get_user(message.from_user.id)
     if not user or user.role != "client":
@@ -212,34 +265,52 @@ async def my_leads(message: Message) -> None:
         ).scalars().all()
 
     if not leads:
-        await message.answer("У вас пока нет заявок 🙈\nНажмите '🌍 Подобрать тур'!")
+        await message.answer(_TEXTS["no_leads"][user.language])
         return
 
     icons = {"new": "🆕", "in_progress": "🔄", "closed": "✅"}
-    text = "📄 <b>Ваши заявки:</b>\n\n"
+    text = _TEXTS["my_leads"][user.language]
     for lead in leads:
         icon = icons.get(lead.status, "❓")
         country = f" · {lead.country}" if lead.country else ""
-        text += f"{icon} Заявка <b>№{lead.id}</b>{country}\n📅 {lead.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+        text += f"{icon} №{lead.id}{country}\n📅 {lead.created_at.strftime('%d.%m.%Y %H:%M')}\n\n"
     await message.answer(text)
 
 
 # ── ⚙️ Настройки ──────────────────────────────────────────────────────────────
 
-@router.message(F.text == "⚙️ Настройки")
+@router.message(F.text.in_(BTN_SETTINGS.values()))
 async def settings(message: Message) -> None:
     user = await get_user(message.from_user.id)
     if not user or user.role != "client":
         return
     lang_map = {"ru": "🇷🇺 Русский", "uz": "🇺🇿 O'zbekcha", "en": "🇬🇧 English"}
     await message.answer(
-        f"⚙️ <b>Настройки</b>\n\n"
-        f"👤 Имя: {user.name}\n"
-        f"🎂 Возраст: {user.age or '—'}\n"
-        f"📱 Телефон: {user.phone or '—'}\n"
-        f"🌐 Язык: {lang_map.get(user.language, user.language)}\n\n"
-        "Для изменения данных: /start",
+        _TEXTS["settings"][user.language].format(
+            name=user.name,
+            age=user.age or '—',
+            phone=user.phone or '—',
+            lang=lang_map.get(user.language, user.language)
+        ),
+        reply_markup=change_lang_kb(),
     )
 
 
+@router.callback_query(F.data.startswith("change_lang:"))
+async def process_change_lang(callback: CallbackQuery) -> None:
+    lang = callback.data.split(":")[1]
+    uid = callback.from_user.id
+    async with async_session() as s:
+        user = await s.get(User, uid)
+        if user:
+            user.language = lang
+            await s.commit()
 
+    msg_map = {
+        "ru": "✅ Язык успешно изменён!",
+        "uz": "✅ Til muvaffaqiyatli o'zgartirildi!",
+        "en": "✅ Language successfully changed!"
+    }
+    await callback.answer(msg_map.get(lang, "OK"))
+    await callback.message.delete()
+    await callback.message.answer(msg_map.get(lang, "OK"), reply_markup=client_menu(lang))

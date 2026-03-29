@@ -4,6 +4,7 @@ import logging
 from openai import AsyncOpenAI
 
 from config import OPENAI_API_KEY
+from database import get_user
 from prompts import SYSTEM_PROMPT
 
 _client = AsyncOpenAI(api_key=OPENAI_API_KEY)
@@ -13,14 +14,24 @@ log = logging.getLogger(__name__)
 
 
 async def get_ai_response(user_id: int, user_message: str) -> str:
+    user = await get_user(user_id)
+    lang = user.language if user else "ru"
+    lang_name = {"ru": "Russian", "uz": "Uzbek", "en": "English"}.get(lang, "Russian")
+
     if user_id not in _histories:
         _histories[user_id] = []
     history = _histories[user_id]
     history.append({"role": "user", "content": user_message})
+    
+    sys_msg = {
+        "role": "system", 
+        "content": SYSTEM_PROMPT + f"\n\nCRITICAL RULE: YOU MUST RESPOND EXCLUSIVELY IN {lang_name.upper()} LANGUAGE."
+    }
+    
     try:
         resp = await _client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[_SYSTEM_MSG] + history,
+            messages=[sys_msg] + history,
             temperature=0.7,
             max_tokens=1024,
         )

@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, Message
 
 from config import ADMIN_IDS
 from database import create_user, get_user
-from keyboards import admin_menu, client_menu, language_kb, manager_menu, phone_kb, skip_kb
+from keyboards import BTN_SKIP, admin_menu, client_menu, language_kb, manager_menu, phone_kb, skip_kb
 from states import Registration
 from stickers import get_sticker
 
@@ -58,7 +58,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
                 await message.answer_sticker(get_sticker("hello"))
             except Exception:
                 pass
-            await message.answer(f"👋 С возвращением, <b>{user.name}</b>! 🌟", reply_markup=client_menu())
+            await message.answer(f"👋 С возвращением, <b>{user.name}</b>! 🌟", reply_markup=client_menu(user.language))
         return
 
     try:
@@ -100,7 +100,7 @@ async def set_age(message: Message, state: FSMContext) -> None:
     age_text = message.text.strip()
     age = int(age_text) if age_text.isdigit() and 1 <= int(age_text) <= 120 else None
     await state.update_data(age=age)
-    await message.answer(_TEXTS["phone_prompt"][lang], reply_markup=phone_kb())
+    await message.answer(_TEXTS["phone_prompt"][lang], reply_markup=phone_kb(lang))
     await state.set_state(Registration.phone)
 
 
@@ -110,7 +110,7 @@ async def set_phone_contact(message: Message, state: FSMContext) -> None:
     await state.update_data(phone=phone)
     data = await state.get_data()
     lang = data.get("language", "ru")
-    await message.answer(_TEXTS["username_prompt"][lang], reply_markup=skip_kb())
+    await message.answer(_TEXTS["username_prompt"][lang], reply_markup=skip_kb(lang))
     await state.set_state(Registration.tg_username)
 
 
@@ -120,7 +120,7 @@ async def set_phone_text(message: Message, state: FSMContext) -> None:
     await state.update_data(phone=phone)
     data = await state.get_data()
     lang = data.get("language", "ru")
-    await message.answer(_TEXTS["username_prompt"][lang], reply_markup=skip_kb())
+    await message.answer(_TEXTS["username_prompt"][lang], reply_markup=skip_kb(lang))
     await state.set_state(Registration.tg_username)
 
 
@@ -129,7 +129,7 @@ async def set_username(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     lang = data.get("language", "ru")
     raw = message.text.strip()
-    tg_username = None if raw == "➡️ Пропустить" else raw.lstrip("@")
+    tg_username = None if raw in BTN_SKIP.values() else raw.lstrip("@")
 
     # Auto-fill from Telegram profile if available
     if tg_username is None and message.from_user.username:
@@ -149,4 +149,4 @@ async def set_username(message: Message, state: FSMContext) -> None:
         await message.answer_sticker(get_sticker("celebrate"))
     except Exception:
         pass
-    await message.answer(_TEXTS["done"][lang].format(name=data["name"]), reply_markup=client_menu())
+    await message.answer(_TEXTS["done"][lang].format(name=data["name"]), reply_markup=client_menu(lang))
