@@ -2,15 +2,34 @@ import json
 import logging
 
 from openai import AsyncOpenAI
+from sqlalchemy import select
 
 from config import OPENAI_API_KEY
-from database import get_user
+from database import Tour, async_session, get_user
 from prompts import SYSTEM_PROMPT
 
 _client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 _histories: dict[int, list[dict]] = {}
-_SYSTEM_MSG = {"role": "system", "content": SYSTEM_PROMPT}
 log = logging.getLogger(__name__)
+
+
+async def _get_tours_context() -> str:
+    """Load all tours from DB and format as text for the AI."""
+    try:
+        async with async_session() as s:
+            tours = (await s.execute(select(Tour).order_by(Tour.country, Tour.title))).scalars().all()
+        if not tours:
+            return "Каталог туров пуст."
+        lines = []
+        for i, t in enumerate(tours, 1):
+            lines.append(
+                f"{i}. 🏷 {t.title} | 📍 {t.country} | 💰 {t.price} | 📅 {t.dates}\n"
+                f"   📄 {t.description}"
+            )
+        return "\n\n".join(lines)
+    except Exception as e:
+        log.warning(f"Failed to load tours context: {e}")
+        return "Каталог туров временно недоступен."
 
 
 async def get_ai_response(user_id: int, user_message: str) -> str:
@@ -22,12 +41,22 @@ async def get_ai_response(user_id: int, user_message: str) -> str:
         _histories[user_id] = []
     history = _histories[user_id]
     history.append({"role": "user", "content": user_message})
-    
+
+    tours_context = await _get_tours_context()
+
     sys_msg = {
-        "role": "system", 
-        "content": SYSTEM_PROMPT + f"\n\nCRITICAL RULE: YOU MUST RESPOND EXCLUSIVELY IN {lang_name.upper()} LANGUAGE."
+        "role": "system",
+        "content": (
+            SYSTEM_PROMPT
+            + f"\n\nCRITICAL RULE: YOU MUST RESPOND EXCLUSIVELY IN {lang_name.upper()} LANGUAGE."
+            + "\n\n## 🗂 КАТАЛОГ ТУРОВ (наши актуальные туры)\n\n"
+            + "ВАЖНО: Ты должна рекомендовать ТОЛЬКО туры из этого каталога. "
+            + "Не придумывай туры сама, не ссылайся на интернет. "
+            + "Если подходящего тура нет — честно скажи об этом и предложи похожий из каталога.\n\n"
+            + tours_context
+        ),
     }
-    
+
     try:
         resp = await _client.chat.completions.create(
             model="gpt-4o-mini",
